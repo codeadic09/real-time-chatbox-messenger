@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Dashboard</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+   <h3>Notifications</h3>
+    <div id="notifications"></div>
+
+<div class="container">
+    <h2>Welcome, {{ profile.username }}</h2>
+
+    <p><strong>Bio:</strong> {{ profile.bio }}</p>
+    <p><strong>City:</strong> {{ profile.city }}</p>
+    <p><strong>Skills:</strong> {{ profile.skills }}</p>
+
+    <a href="/edit-profile"><button>Edit Profile</button></a>
+    <a href="/logout"><button>Logout</button></a>
+    <a href="/search"><button>Search Users</button></a>
+
+</div>
+
+<form method="POST" action="/delete-account"
+      onsubmit="return confirm('Are you sure? This will permanently delete your account.');">
+    <button style="background:red; color:white;">
+        Delete My Account
+    </button>
+</form>
+
+
+<script>
+function loadNotifications() {
+    fetch("/notifications")
+        .then(res => res.json())
+        .then(data => {
+            const box = document.getElementById("notifications");
+            box.innerHTML = "";
+
+            data.forEach(n => {
+                box.innerHTML +=
+                    `<p style="color:red;">
+                     🔔 New message from <b>${n.username}</b> (${n.count})
+                     </p>`;
+            });
+        });
+}
+
+setInterval(loadNotifications, 3000);
+loadNotifications();
+</script>
+
+<script>
+function loadNotifications() {
+    fetch("/notifications")
+        .then(res => res.json())
+        .then(data => {
+            const box = document.getElementById("notifications");
+            box.innerHTML = "";
+
+            if (data.length === 0) {
+                box.innerHTML = "<p>No new messages</p>";
+                return;
+            }
+
+            data.forEach(n => {
+                box.innerHTML += `
+                  <div style="border:1px solid #ccc; padding:8px; margin:5px;">
+                    🔔 <b>${n.username}</b> sent ${n.unread_count} new message(s)
+                    <br>
+                    <a href="/chat/${n.sender_id}">
+                      <button>View Chat</button>
+                    </a>
+                  </div>
+                `;
+            });
+        });
+}
+
+setInterval(loadNotifications, 3000);
+loadNotifications();
+</script>
+
+
+</body>
+</html>
