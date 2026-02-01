@@ -1,9 +1,6 @@
 from flask import Flask, render_template, request, redirect, url_for, flash, session, jsonify
 from db import get_connection
 from werkzeug.security import generate_password_hash, check_password_hash
-from flask_limiter import Limiter
-from flask_limiter.util import get_remote_address
-from flask_talisman import Talisman
 import os
 import secrets
 import re
@@ -23,30 +20,10 @@ app.secret_key = os.getenv('SECRET_KEY', secrets.token_hex(32))
 
 # Session security
 app.config.update(
-    SESSION_COOKIE_SECURE=True,  # HTTPS only
     SESSION_COOKIE_HTTPONLY=True,  # No JavaScript access
     SESSION_COOKIE_SAMESITE='Lax',  # CSRF protection
     PERMANENT_SESSION_LIFETIME=1800,  # 30 minutes
 )
-
-# Rate limiting
-limiter = Limiter(
-    app=app,
-    key_func=get_remote_address,
-    default_limits=["200 per day", "50 per hour"],
-    storage_uri="memory://"
-)
-
-# Security headers (disable in development, enable in production)
-if os.getenv('FLASK_ENV') == 'production':
-    Talisman(app, 
-             force_https=True,
-             strict_transport_security=True,
-             content_security_policy={
-                 'default-src': "'self'",
-                 'script-src': "'self' 'unsafe-inline'",
-                 'style-src': "'self' 'unsafe-inline'"
-             })
 
 # Cache control headers
 @app.after_request
@@ -99,7 +76,6 @@ def login_required(f):
 # ============ AUTHENTICATION ROUTES ============
 
 @app.route("/", methods=["GET", "POST"])
-@limiter.limit("10 per minute")
 def login():
     if request.method == "POST":
         username = sanitize_input(request.form.get("username", ""))
@@ -136,7 +112,6 @@ def login():
     return render_template("login.html")
 
 @app.route("/register", methods=["GET", "POST"])
-@limiter.limit("5 per hour")
 def register():
     if request.method == "POST":
         username = sanitize_input(request.form.get("username", ""))
@@ -223,7 +198,6 @@ def dashboard():
 
 @app.route("/edit-profile", methods=["GET", "POST"])
 @login_required
-@limiter.limit("10 per minute")
 def edit_profile():
     db = get_connection()
     cursor = db.cursor(dictionary=True)
@@ -263,7 +237,6 @@ def edit_profile():
 
 @app.route("/search-users")
 @login_required
-@limiter.limit("30 per minute")
 def search_users():
     query = sanitize_input(request.args.get("q", ""), 50)
     if not query:
@@ -318,7 +291,6 @@ def search_user():
 
 @app.route("/chat/<int:receiver_id>", methods=["GET", "POST"])
 @login_required
-@limiter.limit("60 per minute")
 def chat(receiver_id):
     try:
         db = get_connection()
@@ -364,7 +336,6 @@ def chat(receiver_id):
 
 @app.route("/messages/<int:receiver_id>")
 @login_required
-@limiter.limit("100 per minute")
 def get_messages(receiver_id):
     try:
         db = get_connection()
@@ -390,7 +361,6 @@ def get_messages(receiver_id):
 
 @app.route("/notifications")
 @login_required
-@limiter.limit("100 per minute")
 def notifications():
     try:
         db = get_connection()
@@ -419,7 +389,6 @@ def notifications():
 
 @app.route("/delete-chat/<int:other_user_id>", methods=["POST"])
 @login_required
-@limiter.limit("10 per minute")
 def delete_chat(other_user_id):
     try:
         db = get_connection()
@@ -444,7 +413,6 @@ def delete_chat(other_user_id):
 
 @app.route("/delete-account", methods=["POST"])
 @login_required
-@limiter.limit("3 per hour")
 def delete_account():
     user_id = session['user_id']
     try:
@@ -484,10 +452,6 @@ def not_found(e):
 @app.errorhandler(500)
 def server_error(e):
     return "Internal server error", 500
-
-@app.errorhandler(429)
-def ratelimit_handler(e):
-    return "Rate limit exceeded. Please try again later.", 429
 
 if __name__ == "__main__":
     app.run(debug=True)
