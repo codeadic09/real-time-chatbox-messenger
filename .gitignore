@@ -26,3 +26,12 @@ Thumbs.db
 *.db
 *.sqlite
 *.sqlite3
+
+.env
+__pycache__/
+*.pyc
+*.pyo
+venv/
+env/
+*.db
+.DS_Store
