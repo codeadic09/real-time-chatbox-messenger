@@ -14,12 +14,10 @@ def get_connection():
             password=os.getenv('DB_PASSWORD'),
             database=os.getenv('DB_NAME', 'login_py'),
             port=int(os.getenv('DB_PORT', 3306)),
-            # Security enhancements
             autocommit=False,
             use_pure=True,
             charset='utf8mb4',
-            collation='utf8mb4_unicode_ci',
-            raise_on_warnings=True
+            collation='utf8mb4_unicode_ci'
         )
         return connection
     except mysql.connector.Error as err:
