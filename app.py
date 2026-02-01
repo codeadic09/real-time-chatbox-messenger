@@ -289,11 +289,12 @@ def chat(receiver_id):
         db = get_connection()
         cursor = db.cursor(dictionary=True)
         
+        # Mark messages as READ when chat is opened
         cursor.execute(
             """
             UPDATE messages
             SET seen = TRUE
-            WHERE receiver_id = %s AND sender_id = %s
+            WHERE receiver_id = %s AND sender_id = %s AND seen = FALSE
             """,
             (session['user_id'], receiver_id)
         )
@@ -325,6 +326,31 @@ def chat(receiver_id):
         print(f"Chat error: {e}")
         flash("Error loading chat.", "error")
         return redirect(url_for("dashboard"))
+    
+@app.route("/mark-seen/<int:sender_id>", methods=["POST"])
+@login_required
+def mark_seen(sender_id):
+    try:
+        db = get_connection()
+        cursor = db.cursor()
+        cursor.execute(
+            """
+            UPDATE messages
+            SET seen = TRUE
+            WHERE receiver_id = %s AND sender_id = %s AND seen = FALSE
+            """,
+            (session['user_id'], sender_id)
+        )
+        db.commit()
+        cursor.close()
+        db.close()
+        return jsonify({"success": True})
+    except Exception as e:
+        print(f"Mark seen error: {e}")
+        return jsonify({"success": False})
+
+
+
 
 @app.route("/messages/<int:receiver_id>")
 @login_required
@@ -332,9 +358,29 @@ def get_messages(receiver_id):
     try:
         db = get_connection()
         cursor = db.cursor(dictionary=True)
+        
+        # FIRST: Mark all messages from receiver as SEEN
         cursor.execute(
             """
-            SELECT m.message, u.username AS sender
+            UPDATE messages
+            SET seen = TRUE
+            WHERE receiver_id = %s AND sender_id = %s AND seen = FALSE
+            """,
+            (session['user_id'], receiver_id)
+        )
+        db.commit()
+        print(f"DEBUG: Marked {cursor.rowcount} messages as seen")
+        
+        # THEN: Fetch all messages
+        cursor.execute(
+            """
+            SELECT 
+                m.id,
+                m.message, 
+                u.username AS sender,
+                m.sender_id,
+                m.created_at,
+                m.seen
             FROM messages m
             JOIN users u ON m.sender_id = u.id
             WHERE (m.sender_id=%s AND m.receiver_id=%s)
@@ -344,12 +390,23 @@ def get_messages(receiver_id):
             (session['user_id'], receiver_id, receiver_id, session['user_id'])
         )
         messages = cursor.fetchall()
+        
+        # Convert datetime to string for JSON serialization
+        for msg in messages:
+            if msg['created_at']:
+                msg['created_at'] = msg['created_at'].isoformat()
+        
         cursor.close()
         db.close()
+        
+        print(f"DEBUG: Returning {len(messages)} messages")
         return jsonify(messages)
     except Exception as e:
         print(f"Get messages error: {e}")
+        import traceback
+        traceback.print_exc()
         return jsonify([])
+
 
 @app.route("/notifications")
 @login_required

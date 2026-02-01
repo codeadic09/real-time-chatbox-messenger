@@ -9,7 +9,14 @@
 <body>
     <div class="page">
         <div class="container">
-            <h2>Welcome, {{ profile.username }}! 👋</h2>
+            <div class="dashboard-header">
+                <h2>Welcome, {{ profile.username }}! 👋</h2>
+                <button class="icon-btn theme-toggle" id="themeToggle" title="Toggle Dark Mode">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+                    </svg>
+                </button>
+            </div>
 
             {% with messages = get_flashed_messages(with_categories=True) %}
                 {% if messages %}
@@ -40,19 +47,19 @@
 
             <!-- Profile Card -->
             <div class="profile-card">
-                <div class="profile-avatar">{{ profile.username[0].upper() }}</div>
+                <div class="profile-avatar-large">{{ profile.username[0].upper() }}</div>
                 <h3>{{ profile.username }}</h3>
                 <div class="profile-info">
                     <div class="info-item">
-                        <span class="info-label">Bio:</span>
+                        <span class="info-label">📝 Bio:</span>
                         <span class="info-value">{{ profile.bio or "No bio yet" }}</span>
                     </div>
                     <div class="info-item">
-                        <span class="info-label">City:</span>
+                        <span class="info-label">📍 City:</span>
                         <span class="info-value">{{ profile.city or "Not specified" }}</span>
                     </div>
                     <div class="info-item">
-                        <span class="info-label">Skills:</span>
+                        <span class="info-label">💡 Skills:</span>
                         <span class="info-value">{{ profile.skills or "No skills listed" }}</span>
                     </div>
                 </div>
@@ -95,20 +102,29 @@
         const notificationDropdown = document.getElementById('notificationDropdown');
         const notificationBadge = document.getElementById('notificationBadge');
         const notificationList = document.getElementById('notificationList');
+        const themeToggle = document.getElementById('themeToggle');
 
-        // Toggle dropdown
+        // Dark mode toggle
+        themeToggle.addEventListener('click', () => {
+            document.body.classList.toggle('dark-mode');
+            localStorage.setItem('darkMode', document.body.classList.contains('dark-mode'));
+        });
+
+        // Load dark mode preference
+        if (localStorage.getItem('darkMode') === 'true') {
+            document.body.classList.add('dark-mode');
+        }
+
         notificationBell.addEventListener('click', () => {
             notificationDropdown.classList.toggle('active');
         });
 
-        // Close dropdown when clicking outside
         document.addEventListener('click', (e) => {
             if (!notificationBell.contains(e.target) && !notificationDropdown.contains(e.target)) {
                 notificationDropdown.classList.remove('active');
             }
         });
 
-        // Fetch notifications
         async function fetchNotifications() {
             try {
                 const response = await fetch('/notifications');
@@ -137,7 +153,6 @@
             }
         }
 
-        // Auto-refresh every 3 seconds
         fetchNotifications();
         setInterval(fetchNotifications, 3000);
     </script>

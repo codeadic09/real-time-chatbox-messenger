@@ -1,1 +1,1 @@
-DB_PASSWORD
+create

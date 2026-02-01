@@ -20,18 +20,25 @@
                     <div class="avatar">{{ receiver.username[0].upper() }}</div>
                     <div class="user-details">
                         <h3>{{ receiver.username }}</h3>
-                        <span class="status-dot"></span>
+                        <span class="status-dot online"></span>
                         <span class="status-text">Online</span>
                     </div>
                 </div>
-                <form method="POST" action="{{ url_for('delete_chat', other_user_id=receiver.id) }}" class="delete-form" onsubmit="return confirm('Delete entire chat history?');">
-                    <button type="submit" class="icon-btn delete-btn" title="Delete Chat">
+                <div class="header-actions">
+                    <button class="icon-btn theme-toggle" id="themeToggle" title="Toggle Dark Mode">
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <polyline points="3 6 5 6 21 6"></polyline>
-                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
                         </svg>
                     </button>
-                </form>
+                    <form method="POST" action="{{ url_for('delete_chat', other_user_id=receiver.id) }}" class="delete-form" onsubmit="return confirm('Delete entire chat history?');">
+                        <button type="submit" class="icon-btn delete-btn" title="Delete Chat">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <polyline points="3 6 5 6 21 6"></polyline>
+                                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                            </svg>
+                        </button>
+                    </form>
+                </div>
             </div>
 
             <!-- Messages Container -->
@@ -56,127 +63,223 @@
         </div>
     </div>
 
-    <script>
-        const receiverId = {{ receiver.id }};
-        const currentUser = "{{ session.username }}";
-        const chatBox = document.getElementById("chatBox");
-        const chatForm = document.getElementById("chatForm");
-        const messageInput = document.getElementById("message-input");
-        const loader = document.getElementById("loader");
-        let messageCache = []; // Store messages locally
+<script>
+    const receiverId = {{ receiver.id }};
+    const currentUserId = {{ session.user_id }};  // Use ID instead of name
+    const currentUser = "{{ session.username }}";
+    const chatBox = document.getElementById("chatBox");
+    const chatForm = document.getElementById("chatForm");
+    const messageInput = document.getElementById("message-input");
+    const loader = document.getElementById("loader");
+    const themeToggle = document.getElementById("themeToggle");
+    
+    let lastMessageCount = 0;
+    let isFirstLoad = true;
 
-        // Load messages
-        async function loadMessages() {
-            try {
-                const response = await fetch(`/messages/${receiverId}`);
-                const messages = await response.json();
+    // Dark mode toggle
+    themeToggle.addEventListener('click', () => {
+        document.body.classList.toggle('dark-mode');
+        localStorage.setItem('darkMode', document.body.classList.contains('dark-mode'));
+    });
+
+    // Load dark mode preference
+    if (localStorage.getItem('darkMode') === 'true') {
+        document.body.classList.add('dark-mode');
+    }
+
+    // Format timestamp
+    function formatTime(dateString) {
+        if (!dateString) return 'Just now';
+        
+        try {
+            const date = new Date(dateString);
+            const now = new Date();
+            const diff = now - date;
+            const minutes = Math.floor(diff / 60000);
+            const hours = Math.floor(diff / 3600000);
+            const days = Math.floor(diff / 86400000);
+
+            if (minutes < 1) return 'Just now';
+            if (minutes < 60) return `${minutes}m ago`;
+            if (hours < 24) return `${hours}h ago`;
+            if (days < 7) return `${days}d ago`;
+            
+            return date.toLocaleDateString();
+        } catch (e) {
+            return 'Just now';
+        }
+    }
+
+    // Create message element
+    function createMessageElement(msg, animate = false) {
+        const div = document.createElement("div");
+        
+        // Compare by USER ID not username
+        const isMine = msg.sender_id === currentUserId;
+        
+        div.className = `message ${isMine ? "me" : "other"}`;
+        div.dataset.messageId = msg.id;
+        
+        if (animate) {
+            div.classList.add("message-pop");
+        }
+        
+        const messageText = document.createElement("div");
+        messageText.className = "message-text";
+        messageText.textContent = msg.message;
+        
+        const messageTime = document.createElement("div");
+        messageTime.className = "message-time";
+        messageTime.textContent = formatTime(msg.created_at);
+        
+        div.appendChild(messageText);
+        div.appendChild(messageTime);
+        
+        // Show read receipt on MY messages that are seen
+        // MySQL returns 1 for TRUE, 0 for FALSE
+        if (isMine && (msg.seen === true || msg.seen === 1)) {
+            const readReceipt = document.createElement("div");
+            readReceipt.className = "read-receipt";
+            readReceipt.innerHTML = '✓✓';
+            readReceipt.title = "Seen";
+            div.appendChild(readReceipt);
+        }
+        
+        return div;
+    }
+
+    // Load messages - NO FLICKER + UPDATE READ RECEIPTS
+    async function loadMessages() {
+        try {
+            const response = await fetch(`/messages/${receiverId}`);
+            const messages = await response.json();
+            
+            // First load - render all messages
+            if (isFirstLoad) {
+                loader.style.display = "none";
+                isFirstLoad = false;
                 
-                // First load - render all messages
-                if (messageCache.length === 0) {
-                    loader.style.display = "none";
-                    
-                    if (messages.length === 0) {
-                        chatBox.innerHTML = '<div class="empty-chat">No messages yet. Say hi! 👋</div>';
-                        return;
-                    }
-                    
-                    // Render all initial messages
-                    messages.forEach(msg => {
-                        appendMessage(msg, false);
-                    });
-                    
-                    messageCache = messages;
-                    chatBox.scrollTop = chatBox.scrollHeight;
+                if (messages.length === 0) {
+                    chatBox.innerHTML = '<div class="empty-chat">No messages yet. Say hi! 👋</div>';
+                    lastMessageCount = 0;
                     return;
                 }
                 
-                // Check if there are new messages
-                if (messages.length > messageCache.length) {
-                    // Remove empty chat message if exists
-                    const emptyChat = chatBox.querySelector('.empty-chat');
-                    if (emptyChat) {
-                        emptyChat.remove();
-                    }
-                    
-                    // Append only NEW messages
-                    const newMessages = messages.slice(messageCache.length);
-                    newMessages.forEach(msg => {
-                        appendMessage(msg, true); // Animate new messages
-                    });
-                    
-                    messageCache = messages;
-                    chatBox.scrollTop = chatBox.scrollHeight;
-                }
-                
-                // Check if messages were deleted
-                if (messages.length < messageCache.length) {
-                    // Full reload needed
-                    chatBox.innerHTML = "";
-                    if (messages.length === 0) {
-                        chatBox.innerHTML = '<div class="empty-chat">No messages yet. Say hi! 👋</div>';
-                    } else {
-                        messages.forEach(msg => {
-                            appendMessage(msg, false);
-                        });
-                    }
-                    messageCache = messages;
-                    chatBox.scrollTop = chatBox.scrollHeight;
-                }
-                
-            } catch (error) {
-                console.error("Error loading messages:", error);
-            }
-        }
-
-        // Append a single message to chat box
-        function appendMessage(msg, animate) {
-            const div = document.createElement("div");
-            const isMine = msg.sender === currentUser;
-            div.className = `message ${isMine ? "me" : "other"}`;
-            div.textContent = msg.message;
-            
-            if (animate) {
-                div.classList.add("message-pop");
-            }
-            
-            chatBox.appendChild(div);
-        }
-
-        // Send message
-        chatForm.addEventListener("submit", async (e) => {
-            e.preventDefault();
-            const message = messageInput.value.trim();
-            if (!message) return;
-
-            const sendBtn = chatForm.querySelector(".send-btn");
-            sendBtn.classList.add("sending");
-
-            try {
-                const formData = new FormData();
-                formData.append("message", message);
-
-                await fetch(`/chat/${receiverId}`, {
-                    method: "POST",
-                    body: formData
+                // Clear and render all
+                chatBox.innerHTML = "";
+                messages.forEach(msg => {
+                    chatBox.appendChild(createMessageElement(msg, false));
                 });
-
-                messageInput.value = "";
-                await loadMessages(); // Load immediately after sending
-            } catch (error) {
-                console.error("Error sending message:", error);
-            } finally {
-                sendBtn.classList.remove("sending");
+                
+                lastMessageCount = messages.length;
+                chatBox.scrollTop = chatBox.scrollHeight;
+                return;
             }
-        });
+            
+            // Same message count - CHECK FOR READ RECEIPT UPDATES
+            if (messages.length === lastMessageCount) {
+                // Update read receipts without re-rendering
+                messages.forEach(msg => {
+                    const existingMsg = chatBox.querySelector(`[data-message-id="${msg.id}"]`);
+                    if (existingMsg && msg.sender_id === currentUserId && (msg.seen === true || msg.seen === 1)) {
+                        // Check if read receipt already exists
+                        if (!existingMsg.querySelector('.read-receipt')) {
+                            const readReceipt = document.createElement("div");
+                            readReceipt.className = "read-receipt";
+                            readReceipt.innerHTML = '✓✓';
+                            readReceipt.title = "Seen";
+                            existingMsg.appendChild(readReceipt);
+                        }
+                    }
+                });
+                return;
+            }
+            
+            // New messages - APPEND ONLY
+            if (messages.length > lastMessageCount) {
+                const emptyChat = chatBox.querySelector('.empty-chat');
+                if (emptyChat) {
+                    emptyChat.remove();
+                }
+                
+                const newMessages = messages.slice(lastMessageCount);
+                newMessages.forEach(msg => {
+                    chatBox.appendChild(createMessageElement(msg, true));
+                });
+                
+                lastMessageCount = messages.length;
+                chatBox.scrollTop = chatBox.scrollHeight;
+                return;
+            }
+            
+            // Messages deleted - RE-RENDER ALL
+            if (messages.length < lastMessageCount) {
+                chatBox.innerHTML = "";
+                
+                if (messages.length === 0) {
+                    chatBox.innerHTML = '<div class="empty-chat">No messages yet. Say hi! 👋</div>';
+                } else {
+                    messages.forEach(msg => {
+                        chatBox.appendChild(createMessageElement(msg, false));
+                    });
+                }
+                
+                lastMessageCount = messages.length;
+                chatBox.scrollTop = chatBox.scrollHeight;
+            }
+            
+        } catch (error) {
+            console.error("Error loading messages:", error);
+            if (isFirstLoad) {
+                loader.style.display = "none";
+                chatBox.innerHTML = '<div class="empty-chat">Error loading messages. Please refresh.</div>';
+                isFirstLoad = false;
+            }
+        }
+    }
 
-        // Initial load
-        loadMessages();
-        
-        // Auto-refresh every 2 seconds
-        setInterval(loadMessages, 2000);
+    // Send message
+    chatForm.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const message = messageInput.value.trim();
+        if (!message) return;
 
-        // Focus input on load
-        messageInput.focus();
-    </script>
+        const sendBtn = chatForm.querySelector(".send-btn");
+        sendBtn.classList.add("sending");
+        messageInput.disabled = true;
+
+        try {
+            const formData = new FormData();
+            formData.append("message", message);
+
+            const response = await fetch(`/chat/${receiverId}`, {
+                method: "POST",
+                body: formData
+            });
+
+            if (response.ok) {
+                messageInput.value = "";
+                await loadMessages();
+            }
+        } catch (error) {
+            console.error("Error sending message:", error);
+        } finally {
+            sendBtn.classList.remove("sending");
+            messageInput.disabled = false;
+            messageInput.focus();
+        }
+    });
+
+    // Initial load
+    loadMessages();
+    
+    // Auto-refresh every 2 seconds
+    setInterval(loadMessages, 2000);
+
+    // Focus input on load
+    messageInput.focus();
+</script>
+
+
 </body>
 </html>
