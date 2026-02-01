@@ -1,85 +1,182 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>Chat</title>
-    <link rel="stylesheet" href="/static/style.css">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chat - {{ receiver.username }}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
+    <div class="page">
+        <div class="container chat-container">
+            <!-- Chat Header -->
+            <div class="chat-header">
+                <a href="{{ url_for('dashboard') }}" class="back-btn">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M19 12H5M12 19l-7-7 7-7"/>
+                    </svg>
+                </a>
+                <div class="chat-user-info">
+                    <div class="avatar">{{ receiver.username[0].upper() }}</div>
+                    <div class="user-details">
+                        <h3>{{ receiver.username }}</h3>
+                        <span class="status-dot"></span>
+                        <span class="status-text">Online</span>
+                    </div>
+                </div>
+                <form method="POST" action="{{ url_for('delete_chat', other_user_id=receiver.id) }}" class="delete-form" onsubmit="return confirm('Delete entire chat history?');">
+                    <button type="submit" class="icon-btn delete-btn" title="Delete Chat">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <polyline points="3 6 5 6 21 6"></polyline>
+                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                        </svg>
+                    </button>
+                </form>
+            </div>
 
-<div class="container">
-    <h2>Chat with {{ receiver.username }}</h2>
+            <!-- Messages Container -->
+            <div class="chat-box" id="chatBox">
+                <div class="loader" id="loader">
+                    <div class="dot"></div>
+                    <div class="dot"></div>
+                    <div class="dot"></div>
+                </div>
+            </div>
 
-    {% if session.get("chat_cleared") %}
-  <div class="alert success">Chats cleared</div>
-  {% set _ = session.pop("chat_cleared") %}
-{% endif %}
-
-
-    <div id="chat-box"
-         style="border:1px solid #ccc; height:300px; overflow-y:scroll; padding:10px;">
+            <!-- Input Area -->
+            <form class="chat-form" id="chatForm">
+                <input type="text" id="message-input" placeholder="Type a message..." autocomplete="off" required>
+                <button type="submit" class="send-btn">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="22" y1="2" x2="11" y2="13"></line>
+                        <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                    </svg>
+                </button>
+            </form>
+        </div>
     </div>
 
-    <form id="chat-form">
-        <input id="message-input" placeholder="Type message..." required>
-        <button type="submit">Send</button>
-    </form>
-    <form method="POST" action="/delete-chat/{{ receiver.id }}">
-    <button style="background:red;">Delete Chat</button>
-</form>
+    <script>
+        const receiverId = {{ receiver.id }};
+        const currentUser = "{{ session.username }}";
+        const chatBox = document.getElementById("chatBox");
+        const chatForm = document.getElementById("chatForm");
+        const messageInput = document.getElementById("message-input");
+        const loader = document.getElementById("loader");
+        let messageCache = []; // Store messages locally
 
+        // Load messages
+        async function loadMessages() {
+            try {
+                const response = await fetch(`/messages/${receiverId}`);
+                const messages = await response.json();
+                
+                // First load - render all messages
+                if (messageCache.length === 0) {
+                    loader.style.display = "none";
+                    
+                    if (messages.length === 0) {
+                        chatBox.innerHTML = '<div class="empty-chat">No messages yet. Say hi! 👋</div>';
+                        return;
+                    }
+                    
+                    // Render all initial messages
+                    messages.forEach(msg => {
+                        appendMessage(msg, false);
+                    });
+                    
+                    messageCache = messages;
+                    chatBox.scrollTop = chatBox.scrollHeight;
+                    return;
+                }
+                
+                // Check if there are new messages
+                if (messages.length > messageCache.length) {
+                    // Remove empty chat message if exists
+                    const emptyChat = chatBox.querySelector('.empty-chat');
+                    if (emptyChat) {
+                        emptyChat.remove();
+                    }
+                    
+                    // Append only NEW messages
+                    const newMessages = messages.slice(messageCache.length);
+                    newMessages.forEach(msg => {
+                        appendMessage(msg, true); // Animate new messages
+                    });
+                    
+                    messageCache = messages;
+                    chatBox.scrollTop = chatBox.scrollHeight;
+                }
+                
+                // Check if messages were deleted
+                if (messages.length < messageCache.length) {
+                    // Full reload needed
+                    chatBox.innerHTML = "";
+                    if (messages.length === 0) {
+                        chatBox.innerHTML = '<div class="empty-chat">No messages yet. Say hi! 👋</div>';
+                    } else {
+                        messages.forEach(msg => {
+                            appendMessage(msg, false);
+                        });
+                    }
+                    messageCache = messages;
+                    chatBox.scrollTop = chatBox.scrollHeight;
+                }
+                
+            } catch (error) {
+                console.error("Error loading messages:", error);
+            }
+        }
 
-    <a href="/search">Back to Search</a>
-</div>
+        // Append a single message to chat box
+        function appendMessage(msg, animate) {
+            const div = document.createElement("div");
+            const isMine = msg.sender === currentUser;
+            div.className = `message ${isMine ? "me" : "other"}`;
+            div.textContent = msg.message;
+            
+            if (animate) {
+                div.classList.add("message-pop");
+            }
+            
+            chatBox.appendChild(div);
+        }
 
-<script>
-/* STEP A: receiver id (SAFE) */
-const receiverId = {{ receiver.id | tojson | safe }};
+        // Send message
+        chatForm.addEventListener("submit", async (e) => {
+            e.preventDefault();
+            const message = messageInput.value.trim();
+            if (!message) return;
 
-/* STEP B: load messages */
-function loadMessages() {
-    fetch(`/messages/${receiverId}`)
-        .then(response => response.json())
-        .then(data => {
-            const chatBox = document.getElementById("chat-box");
-            chatBox.innerHTML = "";
+            const sendBtn = chatForm.querySelector(".send-btn");
+            sendBtn.classList.add("sending");
 
-            data.forEach(msg => {
-                const p = document.createElement("p");
-                p.innerHTML = `<b>${msg.sender}:</b> ${msg.message}`;
-                chatBox.appendChild(p);
-            });
+            try {
+                const formData = new FormData();
+                formData.append("message", message);
 
-            chatBox.scrollTop = chatBox.scrollHeight;
-        })
-        .catch(err => console.error("Fetch error:", err));
-}
+                await fetch(`/chat/${receiverId}`, {
+                    method: "POST",
+                    body: formData
+                });
 
-/* STEP C: polling */
-setInterval(loadMessages, 200);
-loadMessages();
+                messageInput.value = "";
+                await loadMessages(); // Load immediately after sending
+            } catch (error) {
+                console.error("Error sending message:", error);
+            } finally {
+                sendBtn.classList.remove("sending");
+            }
+        });
 
-/* STEP D: send message */
-document.getElementById("chat-form").addEventListener("submit", function(e) {
-    e.preventDefault();
-
-    const input = document.getElementById("message-input");
-    const message = input.value.trim();
-    if (!message) return;
-
-    fetch(`/chat/${receiverId}`, {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/x-www-form-urlencoded"
-        },
-        body: `message=${encodeURIComponent(message)}`
-    })
-    .then(() => {
-        input.value = "";
+        // Initial load
         loadMessages();
-    })
-    .catch(err => console.error("Send error:", err));
-});
-</script>
+        
+        // Auto-refresh every 2 seconds
+        setInterval(loadMessages, 2000);
 
+        // Focus input on load
+        messageInput.focus();
+    </script>
 </body>
 </html>
