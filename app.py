@@ -20,9 +20,9 @@ app.secret_key = os.getenv('SECRET_KEY', secrets.token_hex(32))
 
 # Session security
 app.config.update(
-    SESSION_COOKIE_HTTPONLY=True,  # No JavaScript access
-    SESSION_COOKIE_SAMESITE='Lax',  # CSRF protection
-    PERMANENT_SESSION_LIFETIME=1800,  # 30 minutes
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE='Lax',
+    PERMANENT_SESSION_LIFETIME=1800,
 )
 
 # Cache control headers
@@ -97,7 +97,7 @@ def login():
             db.close()
             
             if user and check_password_hash(user['password'], password):
-                session.clear()  # Clear old session
+                session.clear()
                 session['user_id'] = user['id']
                 session['username'] = user['username']
                 session.permanent = True
@@ -117,7 +117,6 @@ def register():
         username = sanitize_input(request.form.get("username", ""))
         password = request.form.get("password", "")
         
-        # Validate inputs
         if not validate_username(username):
             flash("Username must be 3-20 characters (letters, numbers, underscore only).", "error")
             return render_template("register.html")
@@ -130,7 +129,6 @@ def register():
             db = get_connection()
             cursor = db.cursor()
             
-            # Check if username exists
             cursor.execute("SELECT id FROM users WHERE username=%s", (username,))
             if cursor.fetchone():
                 flash("Username already exists.", "error")
@@ -138,21 +136,17 @@ def register():
                 db.close()
                 return render_template("register.html")
             
-            # Hash password securely
             hashed_password = generate_password_hash(password, method='pbkdf2:sha256', salt_length=16)
             
-            # Insert user
             cursor.execute(
                 "INSERT INTO users (username, password) VALUES (%s, %s)",
                 (username, hashed_password)
             )
             db.commit()
             
-            # Get user ID
             cursor.execute("SELECT id FROM users WHERE username=%s", (username,))
             user_id = cursor.fetchone()[0]
             
-            # Create empty profile
             cursor.execute(
                 "INSERT INTO profiles (user_id, bio, city, skills) VALUES (%s, %s, %s, %s)",
                 (user_id, "", "", "")
@@ -225,7 +219,6 @@ def edit_profile():
             print(f"Profile update error: {e}")
             flash("Update failed.", "error")
     
-    # GET request
     cursor.execute(
         "SELECT bio, city, skills FROM profiles WHERE user_id=%s",
         (session['user_id'],)
@@ -296,7 +289,6 @@ def chat(receiver_id):
         db = get_connection()
         cursor = db.cursor(dictionary=True)
         
-        # Mark messages as seen
         cursor.execute(
             """
             UPDATE messages
@@ -419,7 +411,6 @@ def delete_account():
         db = get_connection()
         cursor = db.cursor()
         
-        # Delete in order (foreign key constraints)
         cursor.execute("DELETE FROM messages WHERE sender_id=%s OR receiver_id=%s", (user_id, user_id))
         cursor.execute("DELETE FROM profiles WHERE user_id=%s", (user_id,))
         cursor.execute("DELETE FROM users WHERE id=%s", (user_id,))
